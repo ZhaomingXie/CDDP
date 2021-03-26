@@ -100,7 +100,7 @@ class Quadrotor(DynamicalSystem):
 	def __init__(self):
 		super().__init__(12, 4)
 		self.dt = 0.02
-		self.control_bound = np.array([100, 100, 100, 100])
+		self.control_bound = np.array([10, 10, 10, 10])
 		self.goal = np.zeros(12)
 
 	def transition(self, x, u):
@@ -111,7 +111,7 @@ class Quadrotor(DynamicalSystem):
 		g = np.array([0, 0, -10])
 		x_next = np.zeros(12)
 		x_next[0:3] = x[0:3] + self.dt * x[6:9]
-		x_next[6:9] = x[6:9] + self.dt * (g + rotation_matrix.dot(forces) - 0.0 * x[6:9])
+		x_next[6:9] = x[6:9] + self.dt * (g + rotation_matrix.dot(forces) - 0 * x[6:9])
 		x_next[3:6] = x[3:6] + self.dt * J_omega.dot(x[9:12])
 		x_next[9:12] = x[9:12] + self.dt * torques
 		return x_next
@@ -122,9 +122,9 @@ class Quadrotor(DynamicalSystem):
 		u_sum = u[0]+u[1]+u[2]+u[3]
 		rotation_matrix = self.get_rotation_matrix(x)
 		A[0:self.state_size, 0:self.state_size] = np.identity(self.state_size)
-		A[0, 6] = x[6] * self.dt
-		A[1, 7] = x[7] * self.dt
-		A[0, 8] = x[8] * self.dt
+		A[0, 6] = 1 * self.dt
+		A[1, 7] = 1 * self.dt
+		A[2, 8] = 1 * self.dt
 		
 		# A[6, 3] = u_sum * self.dt * (-np.cos(x[5]) * np.sin(x[4]) * np.sin(x[3]) + np.sin(x[5]) * np.cos(x[3]))
 		# A[6, 4] = u_sum * self.dt * (np.cos(x[5]) * np.cos(x[4]) * np.cos(x[3]))
@@ -134,24 +134,29 @@ class Quadrotor(DynamicalSystem):
 		# A[7, 5] = u_sum * self.dt * (np.cos(x[5]) * np.sin(x[4]) * np.cos(x[3]) + np.sin(x[5]) * np.sin(x[3]))
 		# A[8, 3] = u_sum * self.dt * (-np.cos(x[4]) * np.sin(x[3]))
 		# A[8, 4] = u_sum * self.dt * (-np.sin(x[4]) * np.cos(x[3]))
-		A[6, 3] = u_sum * self.dt * (np.sin(x[4]) * np.cos(x[3]))
-		A[6, 4] = u_sum * self.dt * (np.cos(x[4]) * np.sin(x[3]))
-		A[7, 4] = u_sum * self.dt * (-np.cos(x[5]) * np.cos(x[4]))
-		A[7, 5] = u_sum * self.dt * (np.sin(x[5]) * np.sin(x[4]))
-		A[8, 4] = u_sum * self.dt * (-np.sin(x[4]))
+		
+		A[6, 3] += u_sum * self.dt * (np.sin(x[4]) * np.cos(x[3]))
+		A[6, 4] += u_sum * self.dt * (np.cos(x[4]) * np.sin(x[3]))
+		A[7, 4] += u_sum * self.dt * (-np.cos(x[5]) * np.cos(x[4]))
+		A[7, 5] += u_sum * self.dt * (np.sin(x[5]) * np.sin(x[4]))
+		A[8, 4] += u_sum * self.dt * (-np.sin(x[4]))
+
+		# A[6, 6] -= self.dt
+		# A[7, 7] -= self.dt
+		# A[8, 8] -= self.dt
 
 		A[3, 3] += (x[10] * np.cos(x[3]) * np.tan(x[4]) - x[11] * np.sin(x[3]) * np.tan(x[4])) * self.dt
 		A[3, 4] += self.dt * 1.0 / (np.cos(x[4])**2) * (x[10] * np.sin(x[3]) + x[11] * np.cos(x[3]))
-		A[3, 9] = self.dt
-		A[3, 10] = np.sin(x[3]) * np.tan(x[4]) * self.dt
-		A[3, 11] = np.cos(x[3]) * np.tan(x[4]) * self.dt
+		A[3, 9] += self.dt
+		A[3, 10] += np.sin(x[3]) * np.tan(x[4]) * self.dt
+		A[3, 11] += np.cos(x[3]) * np.tan(x[4]) * self.dt
 		A[4, 3] += self.dt * (-np.sin(x[3]) * x[10] - np.cos(x[3]) * x[11])
-		A[4, 10] = self.dt * np.cos(x[3])
-		A[4, 11] = -self.dt * np.sin(x[3])
-		A[5, 3] = self.dt * (np.cos(x[3]) / np.cos(x[4]) * x[10] - np.sin(x[3]) / np.cos(x[4]) * x[11])
-		A[5, 4] = self.dt * np.sin(x[4]) / (np.cos(x[4])**2) * (np.sin(x[3]) * x[10] + np.cos(x[3]) * x[11])
-		A[5, 10] = self.dt * np.sin(x[3]) / np.cos(x[4])
-		A[5, 11] = self.dt * np.cos(x[3]) / np.cos(x[4])
+		A[4, 10] += self.dt * np.cos(x[3])
+		A[4, 11] += -self.dt * np.sin(x[3])
+		A[5, 3] += self.dt * (np.cos(x[3]) / np.cos(x[4]) * x[10] - np.sin(x[3]) / np.cos(x[4]) * x[11])
+		A[5, 4] += self.dt * np.sin(x[4]) / (np.cos(x[4])**2) * (np.sin(x[3]) * x[10] + np.cos(x[3]) * x[11])
+		A[5, 10] += self.dt * np.sin(x[3]) / np.cos(x[4])
+		A[5, 11] += self.dt * np.cos(x[3]) / np.cos(x[4])
 
 		torque_matrix = np.zeros((3, 4))
 		torque_matrix[0, 0] = 1
@@ -181,6 +186,7 @@ class Quadrotor(DynamicalSystem):
 		# R[2, 0] = -np.sin(x[4])
 		# R[2, 1] = np.cos(x[4]) * np.sin(x[3])
 		# R[2, 2] = np.cos(x[4]) * np.cos(x[3])
+		
 		R[0, 0] = np.cos(x[3]) * np.cos(x[5]) - np.cos(x[4]) * np.sin(x[3]) * np.sin(x[5])
 		R[0, 1] = -np.cos(x[3]) * np.sin(x[3]) - np.cos(x[3]) * np.cos(x[4]) * np.sin(x[5])
 		R[0, 2] = np.sin(x[4]) * np.sin(x[3])
@@ -202,3 +208,15 @@ class Quadrotor(DynamicalSystem):
 		J_omega[2, 1] = np.sin(x[3]) / np.cos(x[4])
 		J_omega[2, 2] = np.cos(x[3]) / np.cos(x[4])
 		return J_omega
+
+if __name__ == '__main__':
+	system = Quadrotor()
+	initial_state = np.array([-3.5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
+	initial_u = np.array([2.5, 2.5, 2.5, 2.5])
+	perturb_u = np.array([0.01, 0, 0, 0])
+	perturb_x = np.zeros(12)
+	perturb_x[4] += 0.01
+	A, B = system.transition_J(initial_state, initial_u)
+	next_state = system.transition(initial_state+perturb_x, initial_u+perturb_u)
+	linearized_next_state = system.transition(initial_state, initial_u) + A.dot(perturb_x)+ B.dot(perturb_u)
+	print(next_state-linearized_next_state)
