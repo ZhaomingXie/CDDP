@@ -23,8 +23,8 @@ class CDDP:
 		self.Q_UX = np.zeros((self.system.control_size, self.system.state_size, self.horizon))
 		self.Q_UU = np.zeros((self.system.control_size, self.system.control_size, self.horizon))
 		self.Q_U = np.zeros((self.system.control_size, self.horizon))
-		self.reg_factor = 0.1
-		self.reg_factor_u = 0.001
+		self.reg_factor = 0.01
+		self.reg_factor_u = 0.01
 		self.active_set_tol = 0.01
 
 	def set_initial_trajectories(self, x_trajectories, u_trajectories):
@@ -99,11 +99,12 @@ class CDDP:
 				delta_u = res.x[0:self.system.control_size]
 				u = delta_u + self.u_trajectories[:, i]
 				u_new_trajectories[:, i] = np.copy(u)
+				# print(u)
 				current_J += self.system.calculate_cost(x, u)
 				x = self.system.transition(x, u)
 			x_new_trajectories[:, self.horizon] = np.copy(x)
 			current_J += self.system.calculate_final_cost(x)
-			if current_J > self.best_J:
+			if current_J > self.best_J+100:
 				feasible = False
 				trust_region_scale *= 0.5
 			else:
@@ -112,7 +113,7 @@ class CDDP:
 				self.x_trajectories = np.copy(x_new_trajectories)
 				self.u_trajectories = np.copy(u_new_trajectories)
 				print("total cost", current_J)
-				print("end traj", x)
+				# print("end traj", x)
 				#self.system.draw_trajectories(self.x_trajectories)
 				#self.system.draw_u_trajectories(self.u_trajectories)
 
@@ -134,8 +135,8 @@ class CDDP:
 			Q_ux = l_uxt + f_u.T.dot(A + self.reg_factor * np.identity(self.system.state_size)).dot(f_x)
 			Q_uu = l_uut + f_u.T.dot(A + self.reg_factor * np.identity(self.system.state_size)).dot(f_u) + self.reg_factor_u * np.identity(self.system.control_size)
 
-			print(f_u)
-			
+			# print(Q_uu)
+
 			#identify active constraint
 			C = np.empty((self.system.control_size + len(self.constraints), self.system.control_size))
 			D = np.empty((self.system.control_size + len(self.constraints), self.system.state_size))
@@ -175,7 +176,7 @@ class CDDP:
 				C = C[0:index, :]
 				D = D[0:index, :]
 				lambda_temp = C.dot(inv(Q_uu)).dot(C.T)
-				lambda_temp = -inv(lambda_temp).dot(C).dot(inv(Q_uu)).dot(Q_u)
+				lambda_temp = -inv(lambda_temp + 0.01 * np.identity(index)).dot(C).dot(inv(Q_uu)).dot(Q_u)
 
 				#remove active constraint with lambda < 0
 				index = 0
@@ -206,7 +207,7 @@ class CDDP:
 				if len(delete_index) < C.shape[0]:
 					C = np.delete(C, delete_index, axis=0)
 					D = np.delete(D, delete_index, axis=0)
-					C_star = inv(C.dot(inv(Q_uu)).dot(C.T)).dot(C).dot(inv(Q_uu))
+					C_star = inv(C.dot(inv(Q_uu)).dot(C.T)+ 0.01 * np.identity(index)).dot(C).dot(inv(Q_uu))
 					H_star = inv(Q_uu).dot(np.identity(self.system.control_size) - C.T.dot(C_star))
 					k = -H_star.dot(Q_u)
 					K = -H_star.dot(Q_ux) + C_star.T.dot(D)
