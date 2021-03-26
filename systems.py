@@ -95,3 +95,110 @@ class Car(DynamicalSystem):
 		ax.set_xlim(-1, 4)
 		ax.set_ylim(-1, 4)
 		plt.show()
+
+class Quadrotor(DynamicalSystem):
+	def __init__(self):
+		super().__init__(12, 4)
+		self.dt = 0.02
+		self.control_bound = np.array([100, 100, 100, 100])
+		self.goal = np.zeros(12)
+
+	def transition(self, x, u):
+		forces = np.array([0, 0, u[0]+u[1]+u[2]+u[3]])
+		torques = np.array([u[0]-u[2], u[1] - u[3], u[0] - u[1] + u[2] - u[3]])
+		rotation_matrix = self.get_rotation_matrix(x)
+		J_omega = self.get_J_omega(x)
+		g = np.array([0, 0, -10])
+		x_next = np.zeros(12)
+		x_next[0:3] = x[0:3] + self.dt * x[6:9]
+		x_next[6:9] = x[6:9] + self.dt * (g + rotation_matrix.dot(forces) - 0.0 * x[6:9])
+		x_next[3:6] = x[3:6] + self.dt * J_omega.dot(x[9:12])
+		x_next[9:12] = x[9:12] + self.dt * torques
+		return x_next
+
+	def transition_J(self, x, u):
+		A = np.zeros((self.state_size, self.state_size))
+		B = np.zeros((self.state_size, self.control_size))
+		u_sum = u[0]+u[1]+u[2]+u[3]
+		rotation_matrix = self.get_rotation_matrix(x)
+		A[0:self.state_size, 0:self.state_size] = np.identity(self.state_size)
+		A[0, 6] = x[6] * self.dt
+		A[1, 7] = x[7] * self.dt
+		A[0, 8] = x[8] * self.dt
+		
+		# A[6, 3] = u_sum * self.dt * (-np.cos(x[5]) * np.sin(x[4]) * np.sin(x[3]) + np.sin(x[5]) * np.cos(x[3]))
+		# A[6, 4] = u_sum * self.dt * (np.cos(x[5]) * np.cos(x[4]) * np.cos(x[3]))
+		# A[6, 5] = u_sum * self.dt * (-np.sin(x[5]) * np.sin(x[4]) * np.cos(x[3]) + np.cos(x[5]) * np.sin(x[3]))
+		# A[7, 3] = u_sum * self.dt * (-np.sin(x[5]) * np.sin(x[4]) * np.sin(x[3]) - np.cos(x[5]) * np.cos(x[3]))
+		# A[7, 4] = u_sum * self.dt * (np.sin(x[5]) * np.cos(x[4]) * np.cos(x[3]))
+		# A[7, 5] = u_sum * self.dt * (np.cos(x[5]) * np.sin(x[4]) * np.cos(x[3]) + np.sin(x[5]) * np.sin(x[3]))
+		# A[8, 3] = u_sum * self.dt * (-np.cos(x[4]) * np.sin(x[3]))
+		# A[8, 4] = u_sum * self.dt * (-np.sin(x[4]) * np.cos(x[3]))
+		A[6, 3] = u_sum * self.dt * (np.sin(x[4]) * np.cos(x[3]))
+		A[6, 4] = u_sum * self.dt * (np.cos(x[4]) * np.sin(x[3]))
+		A[7, 4] = u_sum * self.dt * (-np.cos(x[5]) * np.cos(x[4]))
+		A[7, 5] = u_sum * self.dt * (np.sin(x[5]) * np.sin(x[4]))
+		A[8, 4] = u_sum * self.dt * (-np.sin(x[4]))
+
+		A[3, 3] += (x[10] * np.cos(x[3]) * np.tan(x[4]) - x[11] * np.sin(x[3]) * np.tan(x[4])) * self.dt
+		A[3, 4] += self.dt * 1.0 / (np.cos(x[4])**2) * (x[10] * np.sin(x[3]) + x[11] * np.cos(x[3]))
+		A[3, 9] = self.dt
+		A[3, 10] = np.sin(x[3]) * np.tan(x[4]) * self.dt
+		A[3, 11] = np.cos(x[3]) * np.tan(x[4]) * self.dt
+		A[4, 3] += self.dt * (-np.sin(x[3]) * x[10] - np.cos(x[3]) * x[11])
+		A[4, 10] = self.dt * np.cos(x[3])
+		A[4, 11] = -self.dt * np.sin(x[3])
+		A[5, 3] = self.dt * (np.cos(x[3]) / np.cos(x[4]) * x[10] - np.sin(x[3]) / np.cos(x[4]) * x[11])
+		A[5, 4] = self.dt * np.sin(x[4]) / (np.cos(x[4])**2) * (np.sin(x[3]) * x[10] + np.cos(x[3]) * x[11])
+		A[5, 10] = self.dt * np.sin(x[3]) / np.cos(x[4])
+		A[5, 11] = self.dt * np.cos(x[3]) / np.cos(x[4])
+
+		torque_matrix = np.zeros((3, 4))
+		torque_matrix[0, 0] = 1
+		torque_matrix[0, 2] = -1
+		torque_matrix[1, 1] = 1
+		torque_matrix[1, 3] = -1
+		torque_matrix[2, 0] = 1
+		torque_matrix[2, 1] = -1
+		torque_matrix[2, 2] = 1
+		torque_matrix[2, 3] = -1
+
+		force_matrix = np.zeros((3, 4))
+		force_matrix[2, :] = 1
+		
+		B[9:12, :] = torque_matrix * self.dt
+		B[6:9, :] = self.dt * rotation_matrix.dot(force_matrix)
+		return A, B
+
+	def get_rotation_matrix(self, x):
+		R = np.zeros((3, 3))
+		# R[0, 0] = np.cos(x[5]) * np.cos(x[4])
+		# R[0, 1] = np.cos(x[5]) * np.sin(x[4]) * np.sin(x[3]) - np.sin(x[5]) * np.cos(x[3])
+		# R[0, 2] = np.cos(x[5]) * np.sin(x[4]) * np.cos(x[3]) + np.sin(x[5]) * np.sin(x[3])
+		# R[1, 0] = np.sin(x[5]) * np.cos(x[4])
+		# R[1, 1] = np.sin(x[5]) * np.sin(x[4]) * np.sin(x[3]) + np.cos(x[5]) * np.cos(x[3])
+		# R[1, 2] = np.sin(x[5]) * np.sin(x[4]) * np.cos(x[3]) - np.cos(x[5]) * np.sin(x[3])
+		# R[2, 0] = -np.sin(x[4])
+		# R[2, 1] = np.cos(x[4]) * np.sin(x[3])
+		# R[2, 2] = np.cos(x[4]) * np.cos(x[3])
+		R[0, 0] = np.cos(x[3]) * np.cos(x[5]) - np.cos(x[4]) * np.sin(x[3]) * np.sin(x[5])
+		R[0, 1] = -np.cos(x[3]) * np.sin(x[3]) - np.cos(x[3]) * np.cos(x[4]) * np.sin(x[5])
+		R[0, 2] = np.sin(x[4]) * np.sin(x[3])
+		R[1, 0] = np.cos(x[4]) * np.cos(x[5]) * np.sin(x[3]) 
+		R[1, 1] = np.cos(x[3]) * np.cos(x[4]) * np.cos(x[5]) - np.sin(x[3]) * np.sin(x[5])
+		R[1, 2] = -np.cos(x[5]) * np.sin(x[4])
+		R[2, 0] = np.sin(x[3]) * np.sin(x[4])
+		R[2, 1] = np.cos(x[3]) * np.sin(x[4])
+		R[2, 2] = np.cos(x[4])
+		return R
+
+	def get_J_omega(self, x):
+		J_omega = np.zeros((3, 3))
+		J_omega[0, 0] = 1
+		J_omega[0, 1] = np.sin(x[3]) * np.tan(x[4])
+		J_omega[0, 2] = np.cos(x[3]) * np.tan(x[4])
+		J_omega[1, 1] = np.cos(x[3])
+		J_omega[1, 2] = -np.sin(x[3])
+		J_omega[2, 1] = np.sin(x[3]) / np.cos(x[4])
+		J_omega[2, 2] = np.cos(x[3]) / np.cos(x[4])
+		return J_omega
