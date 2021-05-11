@@ -1,6 +1,6 @@
 import numpy as np
 
-class CircleConstraintForDoubleIntegrator:
+class CircleConstraintForCar:
 	def __init__(self, center, r, system):
 		self.center = center
 		self.r = r
@@ -21,7 +21,7 @@ class CircleConstraintForDoubleIntegrator:
 		result[3] = -2*(x_next[1] - self.center[1]) * self.system.dt * np.cos(x[2]) -2*(x_next[0] - self.center[0]) * self.system.dt * np.sin(x[2])
 		return result
 
-class CircleConstraintForCar:
+class CircleConstraintForDoubleIntegrator:
 	def __init__(self, center, r, system):
 		self.center = center
 		self.r = r
